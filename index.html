@@ -255,7 +255,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 
 // ========== DADOS COMPARTILHADOS ==========
 let patrimonioTotal = 0;
-let dadosRelatorio = null; // dados extraídos para o relatório
+let dadosRelatorio = null;
 
 // ========== PERFIS ==========
 const PERFIS = {
@@ -428,7 +428,7 @@ async function extrairDadosPDF(file) {
     dbg(`💰 Patrimônio total: R$ ${patrimonio.toLocaleString('pt-BR')}`);
   }
   
-  // ========== EXTRAÇÃO PARA RELATÓRIO MENSAL ==========
+  // ========== EXTRAÇÃO PARA RELATÓRIO MENSAL (CORRIGIDA) ==========
   let dadosRelatorioExtraidos = {
     alocacoes: {},
     retornos: {},
@@ -447,19 +447,24 @@ async function extrairDadosPDF(file) {
     dadosRelatorioExtraidos.anoReferencia = dataMatch[3];
   }
   
-  // Extrai rentabilidade e %CDI
+  // EXTRAI RENTABILIDADE MÊS (CORRIGIDO)
   let rentMatch = textoCompleto.match(/RENTABILIDADE\s+M[ÊE]S:\s*(\d+),(\d{2})%/i);
   if (rentMatch) {
     dadosRelatorioExtraidos.rentabilidadeMensal = parseFloat(rentMatch[1] + '.' + rentMatch[2]);
+    dbg(`📈 Rentabilidade Mensal (encontrada): ${dadosRelatorioExtraidos.rentabilidadeMensal}%`);
   }
   
+  // EXTRAI %CDI (CORRIGIDO) - Busca na tabela RESUMO
+  // Padrão: "MÊS   R$ 24.569,45   0,89%   148,93%"
   let cdiMatch = textoCompleto.match(/M[ÊE]S[^\d]*R\$\s*[\d\.]+,\d{2}\s+(\d+),(\d{2})%\s+(\d+),(\d{2})%/i);
   if (cdiMatch) {
     dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[3] + '.' + cdiMatch[4]);
+    dbg(`📊 %CDI (encontrado): ${dadosRelatorioExtraidos.pctCdi}%`);
   }
   
-  // Extrai classes e retornos (com superLimpeza)
+  // Extrai classes e retornos - CORRIGIDO: remove o "M" antes do nome
   let textoLimpo = superLimpeza(textoCompleto);
+  // Regex corrigido para capturar nomes sem o "M" extra
   let regexClasse = /([A-Za-zÀ-Úà-û]+?)\((\d+),(\d+)%\)R\$[\d\.]+,\d+(-?\d+),(\d+)%/gi;
   let match;
   while ((match = regexClasse.exec(textoLimpo)) !== null) {
@@ -467,9 +472,14 @@ async function extrairDadosPDF(file) {
     let alocacao = match[2] + ',' + match[3];
     let retorno = match[4] + ',' + match[5];
     
-    if (nome === 'PósFixado') nome = 'Pós-Fixado';
-    else if (nome === 'PréFixado') nome = 'Pré-Fixado';
-    else if (nome === 'Inflação') nome = 'Inflação';
+    // Limpa o nome removendo caracteres estranhos como "M" no início
+    nome = nome.replace(/^M/, ''); // Remove "M" inicial se existir
+    nome = nome.replace(/[^A-Za-zÀ-Úà-û]/g, ''); // Remove caracteres não-alfabéticos
+    
+    // Padroniza os nomes
+    if (nome === 'PósFixado' || nome === 'PsFixado') nome = 'Pós-Fixado';
+    else if (nome === 'PréFixado' || nome === 'PreFixado') nome = 'Pré-Fixado';
+    else if (nome === 'Inflação' || nome === 'Inflao') nome = 'Inflação';
     else if (nome === 'RendaVariávelBrasil') nome = 'Renda Variável Brasil';
     else if (nome === 'RendaVariávelGlobal') nome = 'Renda Variável Global';
     else if (nome === 'Alternativo') nome = 'Alternativo';
@@ -717,7 +727,6 @@ document.getElementById('btnImportar').addEventListener('click', async () => {
     }
     atualizarTotal();
     
-    // Gera o relatório mensal automaticamente
     let textoFinal = gerarRelatorioTexto(dadosRelatorioExtraidos);
     document.getElementById('relatorioConteudo').innerHTML = `<div class="relatorio-texto">${textoFinal.replace(/\n/g, '<br>')}</div>`;
     
