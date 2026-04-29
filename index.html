@@ -255,7 +255,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 
 // ========== DADOS COMPARTILHADOS ==========
 let patrimonioTotal = 0;
-let dadosRelatorio = null; // dados extraídos para o relatório
+let dadosRelatorio = null;
 
 // ========== PERFIS ==========
 const PERFIS = {
@@ -331,12 +331,10 @@ function atualizarTotal() {
   document.getElementById('totalBar').className = 'total-bar ' + (Math.abs(t - 100) < 1 ? 'total-ok' : 'total-err');
 }
 
-// FUNÇÃO DE SUPREMA LIMPEZA (para o relatório)
 function superLimpeza(texto) {
     return texto.replace(/\s+/g, '');
 }
 
-// EXTRAÇÃO DE DADOS DO PDF (UNIFICADA)
 async function extrairDadosPDF(file) {
   const ab = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
@@ -428,7 +426,7 @@ async function extrairDadosPDF(file) {
     dbg(`💰 Patrimônio total: R$ ${patrimonio.toLocaleString('pt-BR')}`);
   }
   
-  // ========== EXTRAÇÃO PARA RELATÓRIO MENSAL (CORRIGIDA - RENTABILIDADE MÊS CORRETA) ==========
+  // ========== EXTRAÇÃO PARA RELATÓRIO MENSAL ==========
   let dadosRelatorioExtraidos = {
     alocacoes: {},
     retornos: {},
@@ -448,15 +446,10 @@ async function extrairDadosPDF(file) {
   }
   
   // 🔥 CORREÇÃO: Buscar a rentabilidade do MÊS diretamente da tabela Portfólio
-  // O padrão no PDF: "Portfólio   - 0 , 18 %   2 , 99 %"
-  // Vamos capturar o PRIMEIRO percentual após "Portfólio" (que é o mês)
-  
-  // Primeiro, tenta capturar com sinal negativo ou positivo
   let rentabilidadeMensal = null;
   let pctCdi = null;
   
-  // Busca na seção de referências: "Portfólio   - 0 , 18 %" ou "Portfólio   1 , 23 %"
-  // Permite espaços, vírgula como separador decimal
+  // Busca na seção de referências: "Portfólio   - 0 , 18 %"
   let portfolioMatch = textoCompleto.match(/Portfólio\s+(-?\s*\d+)\s*,\s*(\d+)\s*%/i);
   if (portfolioMatch) {
     let sinal = portfolioMatch[1].trim().startsWith('-') ? '-' : '';
@@ -466,8 +459,9 @@ async function extrairDadosPDF(file) {
     dbg(`📈 Rentabilidade Mensal (Portfólio): ${rentabilidadeMensal}%`);
   }
   
-  // Busca %CDI na linha do MÊS: "MÊS   - R$   2 . 638 , 77   - 0 , 18 %   - 15 , 15 %"
-  let cdiMatch = textoCompleto.match(/MÊS[^\d]*R\$[\s\d\.]+,\d{2}\s+(-?\s*\d+)\s*,\s*(\d+)\s*%\s+(-?\s*\d+)\s*,\s*(\d+)\s*%/i);
+  // 🔥 CORREÇÃO DO %CDI: Busca na linha do MÊS com regex mais robusta
+  // Padrão: "MÊS   - R$   2 . 638 , 77   - 0 , 18 %   - 15 , 15 %"
+  let cdiMatch = textoCompleto.match(/MÊS[\s\S]*?R\$[\s\d\.]+,\d{2}[\s\S]*?(-?\s*\d+)\s*,\s*(\d+)\s*%[\s\S]*?(-?\s*\d+)\s*,\s*(\d+)\s*%/i);
   if (cdiMatch) {
     let sinal = cdiMatch[3].trim().startsWith('-') ? '-' : '';
     let numero = cdiMatch[3].replace(/[^0-9-]/g, '');
@@ -491,7 +485,7 @@ async function extrairDadosPDF(file) {
   dadosRelatorioExtraidos.rentabilidadeMensal = rentabilidadeMensal;
   dadosRelatorioExtraidos.pctCdi = pctCdi;
   
-  // Extrai classes e retornos (com superLimpeza)
+  // Extrai classes e retornos
   let textoLimpoRelatorio = superLimpeza(textoCompleto);
   let regexClasse = /([A-Za-zÀ-Úà-û]+?)\((\d+),(\d+)%\)R\$[\d\.]+,\d+(-?\d+),(\d+)%/gi;
   let match;
@@ -500,7 +494,7 @@ async function extrairDadosPDF(file) {
     let alocacao = match[2] + ',' + match[3];
     let retorno = match[4] + ',' + match[5];
     
-    // 🔥 CORREÇÃO: Remove o 'M' inicial APENAS do "MPósFixado"
+    // Remove o 'M' inicial APENAS do "MPósFixado"
     if (nome === 'MPósFixado') {
       nome = 'PósFixado';
       dbg(`🔧 Limpando nome: MPósFixado -> PósFixado`);
@@ -657,7 +651,6 @@ function analisar() {
   area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-// ========== FUNÇÕES DO RELATÓRIO MENSAL ==========
 function gerarRelatorioTexto(dados) {
   let mes = dados.mesReferencia || "abril";
   let ano = dados.anoReferencia || "2026";
@@ -756,7 +749,6 @@ document.getElementById('btnImportar').addEventListener('click', async () => {
     }
     atualizarTotal();
     
-    // Gera o relatório mensal automaticamente
     let textoFinal = gerarRelatorioTexto(dadosRelatorioExtraidos);
     document.getElementById('relatorioConteudo').innerHTML = `<div class="relatorio-texto">${textoFinal.replace(/\n/g, '<br>')}</div>`;
     
@@ -799,7 +791,6 @@ document.getElementById('btnLimpar').addEventListener('click', () => {
 
 document.getElementById('btnAnalisar').addEventListener('click', analisar);
 
-// TABS
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const tabId = btn.dataset.tab;
