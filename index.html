@@ -252,56 +252,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 
 // ========== DADOS COMPARTILHADOS ==========
 let patrimonioTotal = 0;
-let dadosRelatorio = null; // dados extraídos para o relatório
+let dadosRelatorio = null; 
 
 // ========== PERFIS ==========
 const PERFIS = {
-  Conservador: {
-    "Renda Fixa Pós": 85,
-    "Renda Fixa Pré": 15,
-    "Renda Fixa Inflação": 0,
-    "Multiestratégia": 0,
-    "Renda Variável": 0,
-    "Renda Fixa Global": 0,
-    "Renda Variável Global": 0,
-    "Alternativo": 0
-  },
-  Moderado: {
-    "Renda Fixa Pós": 58,
-    "Renda Fixa Pré": 13,
-    "Renda Fixa Inflação": 20,
-    "Multiestratégia": 5,
-    "Renda Variável": 4,
-    "Renda Fixa Global": 0,
-    "Renda Variável Global": 0,
-    "Alternativo": 0
-  },
-  Agressivo: {
-    "Renda Fixa Pós": 50,
-    "Renda Fixa Pré": 15,
-    "Renda Fixa Inflação": 24,
-    "Multiestratégia": 5,
-    "Renda Variável": 6,
-    "Renda Fixa Global": 0,
-    "Renda Variável Global": 0,
-    "Alternativo": 0
-  }
+  Conservador: { "Renda Fixa Pós": 85, "Renda Fixa Pré": 15, "Renda Fixa Inflação": 0, "Multiestratégia": 0, "Renda Variável": 0, "Renda Fixa Global": 0, "Renda Variável Global": 0, "Alternativo": 0 },
+  Moderado: { "Renda Fixa Pós": 58, "Renda Fixa Pré": 13, "Renda Fixa Inflação": 20, "Multiestratégia": 5, "Renda Variável": 4, "Renda Fixa Global": 0, "Renda Variável Global": 0, "Alternativo": 0 },
+  Agressivo: { "Renda Fixa Pós": 50, "Renda Fixa Pré": 15, "Renda Fixa Inflação": 24, "Multiestratégia": 5, "Renda Variável": 6, "Renda Fixa Global": 0, "Renda Variável Global": 0, "Alternativo": 0 }
 };
 
-const CLASSES = [
-  "Renda Fixa Pós",
-  "Renda Fixa Pré",
-  "Renda Fixa Inflação",
-  "Multiestratégia",
-  "Renda Variável",
-  "Renda Fixa Global",
-  "Renda Variável Global",
-  "Alternativo",
-  "Caixa",
-  "Proventos",
-  "Fundos Listados"
-];
-
+const CLASSES = [ "Renda Fixa Pós", "Renda Fixa Pré", "Renda Fixa Inflação", "Multiestratégia", "Renda Variável", "Renda Fixa Global", "Renda Variável Global", "Alternativo", "Caixa", "Proventos", "Fundos Listados" ];
 const CORES = ["c0","c1","c2","c3","c4","c5","c6","c7","c8","c9","c10"];
 
 let perfilAtivo = "Moderado";
@@ -311,15 +271,8 @@ let debugContent = [];
 function fmtPct(v) { return v.toFixed(2).replace('.', ',') + ' %'; }
 function fmtBRL(v) { return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits: 2}); }
 function setStatus(msg, tipo) { const el = document.getElementById('status'); el.innerHTML = msg; el.className = 'status show status-' + tipo; setTimeout(() => el.classList.remove('show'), 4000); }
-function dbg(txt) { 
-  debugContent.push(txt);
-  const el = document.getElementById('debugBox'); 
-  el.textContent = debugContent.join('\n');
-}
-function clearDebug() { 
-  debugContent = []; 
-  document.getElementById('debugBox').textContent = '';
-}
+function dbg(txt) { debugContent.push(txt); const el = document.getElementById('debugBox'); el.textContent = debugContent.join('\n'); }
+function clearDebug() { debugContent = []; document.getElementById('debugBox').textContent = ''; }
 
 function atualizarTotal() {
   let t = 0;
@@ -328,12 +281,7 @@ function atualizarTotal() {
   document.getElementById('totalBar').className = 'total-bar ' + (Math.abs(t - 100) < 1 ? 'total-ok' : 'total-err');
 }
 
-// FUNÇÃO DE SUPREMA LIMPEZA (para o relatório)
-function superLimpeza(texto) {
-    return texto.replace(/\s+/g, '');
-}
-
-// EXTRAÇÃO DE DADOS DO PDF (UNIFICADA)
+// EXTRAÇÃO DE DADOS DO PDF
 async function extrairDadosPDF(file) {
   const ab = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
@@ -342,151 +290,80 @@ async function extrairDadosPDF(file) {
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
     const tc = await page.getTextContent();
-    const pageText = tc.items.map(item => item.str).join(' ');
-    textoCompleto += pageText + ' ';
+    textoCompleto += tc.items.map(item => item.str).join(' ') + ' ';
   }
   
-  dbg('=== TRECHO DO PDF (primeiros 2000 caracteres) ===');
-  dbg(textoCompleto.substring(0, 2000));
-  
-  let secaoAlvo = textoCompleto;
-  const idxEstrategias = textoCompleto.indexOf('Estratégias');
-  const idxComposicao = textoCompleto.indexOf('COMPOSIÇÃO');
-  
-  if (idxEstrategias !== -1) {
-    secaoAlvo = textoCompleto.substring(idxEstrategias, idxEstrategias + 3000);
-    dbg('=== SEÇÃO "Estratégias" encontrada ===');
-  } else if (idxComposicao !== -1) {
-    secaoAlvo = textoCompleto.substring(idxComposicao, idxComposicao + 3000);
-    dbg('=== SEÇÃO "COMPOSIÇÃO" encontrada ===');
-  } else {
-    dbg('⚠️ Seção "Estratégias" ou "COMPOSIÇÃO" não encontrada!');
-  }
-  
-  dbg('Trecho da seção alvo:');
-  dbg(secaoAlvo.substring(0, 1500));
-  
-  // ========== EXTRAÇÃO PARA REBALANCEAMENTO ==========
-  function extrairPctAdaptativo(nomeBusca, variacoesExtras = []) {
-    const variacoes = [nomeBusca, nomeBusca.replace(/\s+/g, '\\s*'), ...variacoesExtras];
-    if (nomeBusca === 'Inflação') {
-      variacoes.push('In\\s*fl\\s*ação', 'In\\s*fl\\s*ação', 'In fl ação');
-    }
-    for (const variacao of variacoes) {
-      const regex = new RegExp(variacao + '\\s*\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{2})\\s*%\\)', 'i');
-      const match = secaoAlvo.match(regex);
-      if (match) {
-        const valor = parseFloat(match[1] + '.' + match[2]);
-        dbg(`✅ ${nomeBusca}: ${match[1]},${match[2]}%`);
-        return valor;
-      }
-    }
-    const nomeAproximado = nomeBusca.replace(/\s+/g, '');
-    const regexFinal = new RegExp('([A-Za-zÀ-ÖØ-öø-ÿ\\s]*' + nomeAproximado + '[A-Za-zÀ-ÖØ-öø-ÿ\\s]*)\\s*\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{2})\\s*%\\)', 'i');
-    const matchFinal = secaoAlvo.match(regexFinal);
-    if (matchFinal) {
-      const valor = parseFloat(matchFinal[2] + '.' + matchFinal[3]);
-      dbg(`✅ ${nomeBusca}: ${matchFinal[2]},${matchFinal[3]}% (aproximado)`);
-      return valor;
-    }
-    dbg(`❌ ${nomeBusca}: não encontrado`);
-    return null;
-  }
-  
-  const pctPos = extrairPctAdaptativo('Pós Fixado');
-  const pctPre = extrairPctAdaptativo('Pré Fixado');
-  const pctInf = extrairPctAdaptativo('Inflação', ['In fl ação', 'Inflação']);
-  const pctMulti = extrairPctAdaptativo('Multimercado');
-  const pctRV = extrairPctAdaptativo('Renda Variável Brasil');
-  const pctAlternativo = extrairPctAdaptativo('Alternativo');
-  const pctRVGlobal = extrairPctAdaptativo('Renda Variável Global');
-  const pctCaixa = extrairPctAdaptativo('Caixa');
-  const pctProventos = extrairPctAdaptativo('Proventos');
-  const pctFundosListados = extrairPctAdaptativo('Fundos Listados');
-  
-  const resRebalanceamento = {
-    "Renda Fixa Pós": pctPos,
-    "Renda Fixa Pré": pctPre,
-    "Renda Fixa Inflação": pctInf,
-    "Multiestratégia": pctMulti,
-    "Renda Variável": pctRV,
-    "Renda Fixa Global": 0,
-    "Renda Variável Global": pctRVGlobal,
-    "Alternativo": pctAlternativo,
-    "Caixa": pctCaixa,
-    "Proventos": pctProventos,
-    "Fundos Listados": pctFundosListados
-  };
-  
+  // LIMPEZA SUPREMA PARA CAPTURA (remove espaços entre caracteres típicos de leitura PDF)
+  const textoLimpo = textoCompleto.replace(/\s+/g, '');
+  dbg('--- Texto Normalizado para Extração ---');
+  dbg(textoLimpo.substring(0, 1000));
+
+  let resRebalanceamento = {};
   let patrimonio = 0;
-  const patMatch = textoCompleto.match(/PATRIM[OÔ]NIO\s*TOTAL\s*BRUTO[:\s]*R\$\s*([\d\.]+,\d{2})/i);
-  if (patMatch) {
-    patrimonio = parseFloat(patMatch[1].replace(/\./g, '').replace(',', '.'));
-    dbg(`💰 Patrimônio total: R$ ${patrimonio.toLocaleString('pt-BR')}`);
+
+  // 1. Captura do Patrimônio
+  const patMatch = textoLimpo.match(/PATRIMÔNIOTOTALBRUTO:R\$([\d\.]+,\d{2})/i);
+  if (patMatch) patrimonio = parseFloat(patMatch[1].replace(/\./g, '').replace(',', '.'));
+
+  // 2. Captura do Rebalanceamento (Regex que ignora espaços)
+  function extrairPct(termo) {
+    const r = new RegExp(termo.replace(/\s+/g, '') + '\\((\\d+,\\d+)%\\)', 'i');
+    const m = textoLimpo.match(r);
+    return m ? parseFloat(m[1].replace(',', '.')) : null;
   }
-  
-  // ========== EXTRAÇÃO PARA RELATÓRIO MENSAL ==========
-  let dadosRelatorioExtraidos = {
-    alocacoes: {},
-    retornos: {},
-    patrimonio: patrimonio,
-    rentabilidadeMensal: null,
-    pctCdi: null,
-    mesReferencia: "",
-    anoReferencia: ""
+
+  resRebalanceamento = {
+    "Renda Fixa Pós": extrairPct("PósFixado"),
+    "Renda Fixa Pré": extrairPct("PréFixado"),
+    "Renda Fixa Inflação": extrairPct("Inflação"),
+    "Multiestratégia": extrairPct("Multimercado"),
+    "Renda Variável": extrairPct("RendaVariávelBrasil"),
+    "Renda Fixa Global": 0,
+    "Renda Variável Global": extrairPct("RendaVariávelGlobal"),
+    "Alternativo": extrairPct("Alternativo"),
+    "Caixa": extrairPct("Caixa"),
+    "Proventos": extrairPct("Proventos"),
+    "Fundos Listados": extrairPct("FundosListados")
   };
+
+  // 3. Captura para o Relatório
+  let dadosRelatorioExtraidos = { alocacoes: {}, retornos: {}, patrimonio, rentabilidadeMensal: null, pctCdi: null, mesReferencia: "", anoReferencia: "" };
   
-  // Extrai data
-  let dataMatch = textoCompleto.match(/Data\s*de\s*Referência\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+  // Data
+  const dataMatch = textoLimpo.match(/Data de Referência(\d{2})\/(\d{2})\/(\d{4})/i);
   if (dataMatch) {
-    let meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
     dadosRelatorioExtraidos.mesReferencia = meses[parseInt(dataMatch[2]) - 1];
     dadosRelatorioExtraidos.anoReferencia = dataMatch[3];
   }
-  
-  // Extrai rentabilidade e %CDI
-  let rentMatch = textoCompleto.match(/RENTABILIDADE\s+M[ÊE]S:\s*(\d+),(\d{2})%/i);
-  if (rentMatch) {
-    dadosRelatorioExtraidos.rentabilidadeMensal = parseFloat(rentMatch[1] + '.' + rentMatch[2]);
-  }
-  
-  // CORREÇÃO CDI: Regex mais flexível para capturar o CDI ignorando espaços variáveis
-  const regexCDI = /M[ÊE]S[\s\S]*?R\$[\s\d.,]+?(\d+),(\d{2})%\s+(\d+),(\d{2})%/i;
-  const cdiMatch = textoCompleto.match(regexCDI);
+
+  // Rentabilidade Mês
+  const rentMatch = textoLimpo.match(/RENTABILIDADEMÊS:(\d+,\d+)%/i);
+  if (rentMatch) dadosRelatorioExtraidos.rentabilidadeMensal = parseFloat(rentMatch[1].replace(',', '.'));
+
+  // CORREÇÃO CDI (Foco na tabela de referências ou no resumo)
+  // No seu PDF: "MÊSR$3.926,830,78%64,18%" onde 64,18 é o % do CDI
+  const cdiMatch = textoLimpo.match(/MÊSR\$[\d\.,]+?[\d,]+%(\d+,\d+)%/i);
   if (cdiMatch) {
-    dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[3] + '.' + cdiMatch[4]);
-    dbg(`✅ % CDI Extraído: ${cdiMatch[3]},${cdiMatch[4]}%`);
-  } else {
-    dbg('❌ Falha ao extrair % do CDI');
+    dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[1].replace(',', '.'));
+    dbg('✅ % CDI Extraído: ' + cdiMatch[1] + '%');
   }
-  
-  // Extrai classes e retornos (com superLimpeza)
-  let textoLimpo = superLimpeza(textoCompleto);
-  let regexClasse = /([A-Za-zÀ-Úà-û]+?)\((\d+),(\d+)%\)R\$[\d\.]+,\d+(-?\d+),(\d+)%/gi;
-  let match;
-  while ((match = regexClasse.exec(textoLimpo)) !== null) {
-    let nome = match[1];
-    let alocacao = match[2] + ',' + match[3];
-    let retorno = match[4] + ',' + match[5];
-    
-    if (nome === 'PósFixado') nome = 'Pós-Fixado';
-    else if (nome === 'PréFixado') nome = 'Pré-Fixado';
-    else if (nome === 'Inflação') nome = 'Inflação';
-    else if (nome === 'RendaVariávelBrasil') nome = 'Renda Variável Brasil';
-    else if (nome === 'RendaVariávelGlobal') nome = 'Renda Variável Global';
-    else if (nome === 'Alternativo') nome = 'Alternativo';
-    else if (nome === 'Multimercado') nome = 'Multimercado';
-    else if (nome === 'FundosListados') nome = 'Fundos Listados';
-    else if (nome === 'Caixa') nome = 'Caixa';
-    else if (nome === 'Proventos') nome = 'Proventos';
-    
-    if (alocacao && retorno && !dadosRelatorioExtraidos.alocacoes[nome]) {
-      dadosRelatorioExtraidos.alocacoes[nome] = alocacao;
-      dadosRelatorioExtraidos.retornos[nome] = retorno;
-      dbg(`✅ [Relatório] ${nome}: alocação ${alocacao}%, retorno ${retorno}%`);
-    }
+
+  // Extração de classes e retornos individuais para o texto
+  const regexRetorno = /([A-Za-zÀ-Úà-û]+)\((\d+,\d+)%\)R\$[\d\.,]+?(-?\d+,\d+)%/gi;
+  let mRet;
+  while ((mRet = regexRetorno.exec(textoLimpo)) !== null) {
+    let nome = mRet[1];
+    // Normalização de nomes para exibição
+    if(nome === "PósFixado") nome = "Pós-Fixado";
+    if(nome === "PréFixado") nome = "Pré-Fixado";
+    if(nome === "RendaVariávelBrasil") nome = "Renda Variável Brasil";
+    if(nome === "FundosListados") nome = "Fundos Listados";
+
+    dadosRelatorioExtraidos.alocacoes[nome] = mRet[2];
+    dadosRelatorioExtraidos.retornos[nome] = mRet[3];
   }
-  
+
   return { resRebalanceamento, patrimonio, dadosRelatorio: dadosRelatorioExtraidos };
 }
 
@@ -497,306 +374,125 @@ function renderInputs() {
   CLASSES.forEach((classe, idx) => {
     const row = document.createElement('div');
     row.className = 'classe-row';
-    row.innerHTML = `
-      <div class="dot8 ${CORES[idx]}"></div>
-      <span class="classe-nome">${classe}</span>
-      <input class="classe-input" type="number" step="any" min="0" max="100" value="0" id="inp_${idx}">
-      <span class="pct-label">%</span>
-    `;
+    row.innerHTML = `<div class="dot8 ${CORES[idx]}"></div><span class="classe-nome">${classe}</span><input class="classe-input" type="number" step="any" min="0" max="100" value="0" id="inp_${idx}"><span class="pct-label">%</span>`;
     container.appendChild(row);
     inputsMap[classe] = row.querySelector('input');
     inputsMap[classe].addEventListener('input', atualizarTotal);
   });
-  atualizarTotal();
 }
 
 function renderAlvo() {
   const rec = PERFIS[perfilAtivo];
   document.getElementById('perfilLabel').textContent = perfilAtivo;
-  const container = document.getElementById('tabelaAlvo');
-  const classesAlvo = CLASSES.filter(c => c !== 'Caixa' && c !== 'Proventos' && c !== 'Fundos Listados');
-  container.innerHTML = classesAlvo.map((c, i) => `
+  const classesAlvo = CLASSES.filter(c => !["Caixa", "Proventos", "Fundos Listados"].includes(c));
+  document.getElementById('tabelaAlvo').innerHTML = classesAlvo.map(c => `
     <div class="alvo-row">
-      <div class="dot8 ${CORES[CLASSES.indexOf(c)]}"></div>
-      <span class="alvo-nome">${c}</span>
-      <div class="alvo-bar-wrap"><div class="alvo-bar-fill" style="width:${rec[c]}%"></div></div>
-      <span class="alvo-pct">${rec[c]}%</span>
-    </div>
-  `).join('');
+      <div class="dot8 ${CORES[CLASSES.indexOf(c)]}"></div><span class="alvo-nome">${c}</span>
+      <div class="alvo-bar-wrap"><div class="alvo-bar-fill" style="width:${rec[c]}%"></div></div><span class="alvo-pct">${rec[c]}%</span>
+    </div>`).join('');
 }
 
 function renderPerfis() {
   const icons = { Conservador: '🛡️', Moderado: '⚖️', Agressivo: '🚀' };
   const container = document.getElementById('perfisRow');
-  container.innerHTML = Object.keys(PERFIS).map(p => `
-    <button class="perfil-btn ${p === perfilAtivo ? 'ativo' : ''}" data-perfil="${p}">
-      ${icons[p]} ${p}
-    </button>
-  `).join('');
-  container.querySelectorAll('.perfil-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      perfilAtivo = btn.dataset.perfil;
-      renderPerfis();
-      renderAlvo();
-      document.getElementById('resultArea').style.display = 'none';
-    });
-  });
+  container.innerHTML = Object.keys(PERFIS).map(p => `<button class="perfil-btn ${p === perfilAtivo ? 'ativo' : ''}" data-perfil="${p}">${icons[p]} ${p}</button>`).join('');
+  container.querySelectorAll('.perfil-btn').forEach(btn => btn.addEventListener('click', () => { perfilAtivo = btn.dataset.perfil; renderPerfis(); renderAlvo(); document.getElementById('resultArea').style.display = 'none'; }));
 }
 
 function analisar() {
   let total = 0;
-  const atual = {};
-  CLASSES.forEach(c => {
-    atual[c] = parseFloat(inputsMap[c]?.value || 0) || 0;
-    total += atual[c];
-  });
-  
-  if (Math.abs(total - 100) > 1) {
-    setStatus(`Total deve ser próximo de 100% (atual: ${fmtPct(total)}). Tolerância de 1%`, 'err');
-    return;
-  }
+  CLASSES.forEach(c => total += parseFloat(inputsMap[c]?.value || 0) || 0);
+  if (Math.abs(total - 100) > 1) { setStatus(`Total deve ser próximo de 100% (atual: ${fmtPct(total)})`, 'err'); return; }
   
   const alvo = PERFIS[perfilAtivo];
   let nManter = 0, nAlocar = 0, nRetirar = 0;
-  const classesAnalise = CLASSES.filter(c => c !== 'Caixa' && c !== 'Proventos' && c !== 'Fundos Listados');
-  
-  const html = classesAnalise.map((c, idx) => {
-    const diff = alvo[c] - atual[c];
-    const valorMovimentar = Math.abs(diff * patrimonioTotal / 100);
-    
-    let badgeClass, label, valorClass;
-    if (Math.abs(diff) < 0.05) {
-      badgeClass = 'b-manter';
-      label = '✓ Manter';
-      valorClass = 'manter';
-      nManter++;
-    } else if (diff > 0) {
-      badgeClass = 'b-alocar';
-      label = `↑ Alocar +${fmtPct(diff)}`;
-      valorClass = 'alocar';
-      nAlocar++;
-    } else {
-      badgeClass = 'b-retirar';
-      label = `↓ Retirar ${fmtPct(Math.abs(diff))}`;
-      valorClass = 'retirar';
-      nRetirar++;
-    }
-    
-    const valorDisplay = Math.abs(diff) < 0.05 ? 'R$ 0,00' : fmtBRL(valorMovimentar);
-    const corIndex = CLASSES.indexOf(c);
-    
-    return `
-      <div class="rec-row">
-        <div class="dot8 ${CORES[corIndex]}"></div>
-        <span class="rec-nome">${c}</span>
-        <span class="rec-nums">${fmtPct(atual[c])} → ${alvo[c]}%</span>
-        <span class="rec-valor ${valorClass}">${valorDisplay}</span>
-        <span class="badge ${badgeClass}">${label}</span>
-      </div>
-    `;
+  const html = CLASSES.filter(c => !["Caixa", "Proventos", "Fundos Listados"].includes(c)).map(c => {
+    const atual = parseFloat(inputsMap[c]?.value || 0) || 0;
+    const diff = alvo[c] - atual;
+    const val = Math.abs(diff * patrimonioTotal / 100);
+    let b, l, v;
+    if (Math.abs(diff) < 0.05) { b='b-manter'; l='✓ Manter'; v='manter'; nManter++; }
+    else if (diff > 0) { b='b-alocar'; l=`↑ Alocar +${fmtPct(diff)}`; v='alocar'; nAlocar++; }
+    else { b='b-retirar'; l=`↓ Retirar ${fmtPct(Math.abs(diff))}`; v='retirar'; nRetirar++; }
+    return `<div class="rec-row"><div class="dot8 ${CORES[CLASSES.indexOf(c)]}"></div><span class="rec-nome">${c}</span><span class="rec-nums">${fmtPct(atual)} → ${alvo[c]}%</span><span class="rec-valor ${v}">${Math.abs(diff)<0.05?'R$ 0,00':fmtBRL(val)}</span><span class="badge ${b}">${l}</span></div>`;
   }).join('');
   
-  const totalOutros = (atual['Caixa'] || 0) + (atual['Proventos'] || 0) + (atual['Fundos Listados'] || 0);
-  let observacao = '';
-  if (totalOutros > 0.05) {
-    observacao = `
-      <div style="margin-top: 1rem; padding: 0.75rem; background: var(--blue-bg); border-radius: 8px; border-left: 3px solid var(--blue);">
-        <strong style="color: var(--blue);">ℹ️ Observação:</strong> O cliente possui ${fmtPct(totalOutros)} em Caixa/Proventos/Fundos Listados. 
-        Estes valores devem ser <strong>direcionados</strong> conforme as recomendações acima para ajustar a carteira aos percentuais-alvo.
-      </div>
-    `;
-  }
-  
-  document.getElementById('listaRec').innerHTML = html + observacao;
+  document.getElementById('listaRec').innerHTML = html;
   document.getElementById('resumoGrid').innerHTML = `
     <div class="resumo-item"><div class="resumo-label">Manter</div><div class="resumo-val" style="color:var(--amber)">${nManter}</div></div>
     <div class="resumo-item"><div class="resumo-label">Alocar</div><div class="resumo-val" style="color:var(--green)">${nAlocar}</div></div>
     <div class="resumo-item"><div class="resumo-label">Retirar</div><div class="resumo-val" style="color:var(--red)">${nRetirar}</div></div>
-    <div class="resumo-item"><div class="resumo-label">Perfil</div><div class="resumo-val" style="color:var(--gold);font-size:14px">${perfilAtivo}</div></div>
-  `;
-  
-  const area = document.getElementById('resultArea');
-  area.style.display = 'block';
-  area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    <div class="resumo-item"><div class="resumo-label">Perfil</div><div class="resumo-val" style="color:var(--gold);font-size:14px">${perfilAtivo}</div></div>`;
+  document.getElementById('resultArea').style.display = 'block';
+  document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth' });
 }
 
-// ========== FUNÇÕES DO RELATÓRIO MENSAL ==========
+// ========== FUNÇÕES DO RELATÓRIO ==========
 function gerarRelatorioTexto(dados) {
-  let mes = dados.mesReferencia || "abril";
-  let ano = dados.anoReferencia || "2026";
-  let rentabilidade = dados.rentabilidadeMensal;
-  let pctCdi = dados.pctCdi;
-  let patrimonio = dados.patrimonio;
-  let alocacoes = dados.alocacoes;
-  let retornos = dados.retornos;
-  
   let cenario = document.getElementById('textoCenario').value;
-  
-  let desempenhoTexto = "";
-  let classesList = [];
-  
-  for (let nome in alocacoes) {
-    if (alocacoes[nome]) {
-      let alocNum = parseFloat(alocacoes[nome].replace(',', '.'));
-      classesList.push({ nome: nome, alocacao: alocNum, alocStr: alocacoes[nome], retorno: retornos[nome] });
-    }
+  let desempenho = "";
+  for (let n in dados.alocacoes) {
+    let r = dados.retornos[n];
+    let mov = r.startsWith('-') ? 'recuou' : 'subiu';
+    desempenho += `${n} (${dados.alocacoes[n]}% da carteira) ${mov} ${r.replace('-','')}% ; `;
   }
-  classesList.sort((a, b) => b.alocacao - a.alocacao);
-  
-  for (let item of classesList) {
-    let ret = item.retorno.replace(',', '.');
-    let retNum = parseFloat(ret);
-    let isNegativo = ret.startsWith('-') || retNum < 0;
-    let movimento = isNegativo ? 'recuou' : 'subiu';
-    let retornoAbs = isNegativo ? ret.replace('-', '') : ret;
-    desempenhoTexto += `${item.nome} (${item.alocStr}% da carteira) ${movimento} ${retornoAbs}%; `;
-  }
-  
-  if (desempenhoTexto === "") {
-    desempenhoTexto = "Não foi possível capturar os retornos individuais das classes no PDF.";
-  }
-  
-  let rentabilidadeStr = rentabilidade ? `${rentabilidade.toFixed(2).replace('.', ',')}%` : "não disponível";
-  let pctCdiStr = pctCdi ? `${pctCdi.toFixed(2).replace('.', ',')}%` : "não disponível";
-  let patrimonioStr = patrimonio ? fmtBRL(patrimonio) : "";
-  
-  let texto = `Prezado cliente, tudo bem? Segue o seu relatório mensal.
+  return `Prezado cliente, tudo bem? Segue o seu relatório mensal.
 
 ${cenario}
 
-Sua carteira atravessou esse ambiente com solidez, apresentando um retorno de ${rentabilidadeStr} no mês de ${mes.toLowerCase()} de ${ano}, equivalente a ${pctCdiStr} do CDI do período.${patrimonioStr ? ` O patrimônio atual é de ${patrimonioStr}.` : ''}
+Sua carteira atravessou esse ambiente com solidez, apresentando um retorno de ${dados.rentabilidadeMensal ? dados.rentabilidadeMensal.toFixed(2).replace('.',',')+'%' : '---'} no mês de ${dados.mesReferencia.toLowerCase()} de ${dados.anoReferencia}, equivalente a ${dados.pctCdi ? dados.pctCdi.toFixed(2).replace('.',',')+'%' : '---'} do CDI do período. O patrimônio atual é de ${fmtBRL(dados.patrimonio)}.
 
-No desempenho por classe de ativo: ${desempenhoTexto}
+No desempenho por classe de ativo: ${desempenho}
 
-Por fim, reforçamos a importância da disciplina na manutenção da estratégia e nos aportes focando no desenvolvimento da carteira no longo prazo. Essa postura é fundamental para atravessar diferentes ciclos de mercado, aproveitar oportunidades, reduzir os impactos das oscilações no curto prazo e manter a carteira alinhada aos seus objetivos financeiros.`;
-  
-  return texto;
+Por fim, reforçamos a importância da disciplina na manutenção da estratégia e nos aportes focando no desenvolvimento da carteira no longo prazo.`;
 }
 
 // ========== EVENTOS ==========
-document.getElementById('btnToggleDebug').addEventListener('click', () => {
-  const debugBox = document.getElementById('debugBox');
-  const arrow = document.getElementById('debugArrow');
-  debugBox.classList.toggle('show');
-  arrow.classList.toggle('rotated');
-});
-
-document.getElementById('filePdf').addEventListener('change', function() {
-  document.getElementById('fileName').textContent = this.files[0]?.name || 'Selecionar arquivo PDF...';
-});
-
-document.getElementById('btnCopiar').addEventListener('click', async () => {
-  const texto = document.getElementById('relatorioConteudo').innerText;
-  try {
-    await navigator.clipboard.writeText(texto);
-    setStatus('✅ Texto copiado para a área de transferência!', 'ok');
-  } catch (err) {
-    setStatus('❌ Erro ao copiar texto', 'err');
-  }
+document.getElementById('btnToggleDebug').addEventListener('click', () => { 
+  document.getElementById('debugBox').classList.toggle('show'); 
+  document.getElementById('debugArrow').classList.toggle('rotated'); 
 });
 
 document.getElementById('btnImportar').addEventListener('click', async () => {
   const file = document.getElementById('filePdf').files[0];
-  if (!file) { setStatus('Selecione um arquivo PDF primeiro.', 'err'); return; }
+  if (!file) return setStatus('Selecione um arquivo PDF.', 'err');
   clearDebug();
-  document.getElementById('debugBox').classList.remove('show');
-  document.getElementById('debugArrow').classList.remove('rotated');
-  document.getElementById('patrimTag').classList.remove('show');
   document.getElementById('overlay').classList.add('show');
   try {
-    const { resRebalanceamento, patrimonio, dadosRelatorio: dadosRelatorioExtraidos } = await extrairDadosPDF(file);
+    const { resRebalanceamento, patrimonio, dadosRelatorio: d } = await extrairDadosPDF(file);
     patrimonioTotal = patrimonio;
-    dadosRelatorio = dadosRelatorioExtraidos;
-    
-    let encontrou = false;
-    for (const classe of CLASSES) {
-      if (resRebalanceamento[classe] !== null && resRebalanceamento[classe] !== undefined && resRebalanceamento[classe] > 0) {
-        inputsMap[classe].value = resRebalanceamento[classe].toFixed(2);
-        encontrou = true;
-      } else {
-        inputsMap[classe].value = '0';
-      }
-    }
+    dadosRelatorio = d;
+    CLASSES.forEach(c => { inputsMap[c].value = resRebalanceamento[c] ? resRebalanceamento[c].toFixed(2) : '0'; });
     atualizarTotal();
-    
-    // Gera o relatório mensal automaticamente
-    let textoFinal = gerarRelatorioTexto(dadosRelatorioExtraidos);
-    document.getElementById('relatorioConteudo').innerHTML = `<div class="relatorio-texto">${textoFinal.replace(/\n/g, '<br>')}</div>`;
-    
-    if (encontrou) {
-      setStatus('✅ PDF importado com sucesso!', 'ok');
-      if (patrimonioTotal > 0) {
-        document.getElementById('patrimVal').innerHTML = fmtBRL(patrimonioTotal);
-        document.getElementById('patrimTag').classList.add('show');
-      }
-    } else {
-      setStatus('⚠️ Dados extraídos parcialmente. Veja o debug.', 'err');
-      document.getElementById('debugBox').classList.add('show');
-      document.getElementById('debugArrow').classList.add('rotated');
-    }
-  } catch (e) {
-    setStatus('Erro: ' + e.message, 'err'); 
-    dbg('ERRO: ' + e.message);
-    document.getElementById('debugBox').classList.add('show');
-    document.getElementById('debugArrow').classList.add('rotated');
-  } finally {
-    document.getElementById('overlay').classList.remove('show');
-  }
+    document.getElementById('relatorioConteudo').innerHTML = `<div class="relatorio-texto">${gerarRelatorioTexto(d).replace(/\n/g, '<br>')}</div>`;
+    if (patrimonio > 0) { document.getElementById('patrimVal').innerHTML = fmtBRL(patrimonio); document.getElementById('patrimTag').classList.add('show'); }
+    setStatus('✅ PDF importado!', 'ok');
+  } catch (e) { setStatus('Erro na leitura.', 'err'); dbg(e.stack); }
+  finally { document.getElementById('overlay').classList.remove('show'); }
 });
 
-document.getElementById('btnLimpar').addEventListener('click', () => {
-  CLASSES.forEach(c => { if (inputsMap[c]) inputsMap[c].value = '0'; });
-  patrimonioTotal = 0;
-  dadosRelatorio = null;
-  atualizarTotal();
-  document.getElementById('resultArea').style.display = 'none';
-  document.getElementById('status').classList.remove('show');
-  document.getElementById('patrimTag').classList.remove('show');
-  document.getElementById('relatorioConteudo').innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text3);">⚡ Importe um PDF para gerar o relatório automático</div>';
-  clearDebug();
-  document.getElementById('debugBox').classList.remove('show');
-  document.getElementById('debugArrow').classList.remove('rotated');
-  document.getElementById('filePdf').value = '';
-  document.getElementById('fileName').textContent = 'Selecionar arquivo PDF...';
-});
-
+document.getElementById('btnLimpar').addEventListener('click', () => { location.reload(); });
 document.getElementById('btnAnalisar').addEventListener('click', analisar);
+document.getElementById('btnCopiar').addEventListener('click', () => { navigator.clipboard.writeText(document.getElementById('relatorioConteudo').innerText); setStatus('✅ Copiado!', 'ok'); });
+document.getElementById('filePdf').addEventListener('change', function() { document.getElementById('fileName').textContent = this.files[0]?.name || 'Selecionar arquivo PDF...'; });
 
-// TABS
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const tabId = btn.dataset.tab;
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    document.getElementById(tabId).classList.add('active');
-  });
-});
+document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('.tab-btn, .tab-content').forEach(el => el.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(btn.dataset.tab).classList.add('active');
+}));
 
 document.getElementById('themeToggle').addEventListener('click', () => {
-  const body = document.body;
-  const btn = document.getElementById('themeToggle');
-  if (body.classList.contains('light')) {
-    body.classList.remove('light');
-    localStorage.setItem('theme', 'dark');
-    btn.textContent = '🌙';
-  } else {
-    body.classList.add('light');
-    localStorage.setItem('theme', 'light');
-    btn.textContent = '☀️';
-  }
+  document.body.classList.toggle('light');
+  const isLight = document.body.classList.contains('light');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  document.getElementById('themeToggle').textContent = isLight ? '☀️' : '🌙';
 });
 
 (function init() {
-  const saved = localStorage.getItem('theme');
-  if (saved === 'light') {
-    document.body.classList.add('light');
-    document.getElementById('themeToggle').textContent = '☀️';
-  }
+  if (localStorage.getItem('theme') === 'light') { document.body.classList.add('light'); document.getElementById('themeToggle').textContent = '☀️'; }
   document.getElementById('hDate').textContent = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
-  renderInputs(); 
-  renderPerfis(); 
-  renderAlvo();
+  renderInputs(); renderPerfis(); renderAlvo();
 })();
 </script>
 </body>
