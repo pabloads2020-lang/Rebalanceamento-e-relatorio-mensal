@@ -459,15 +459,13 @@ async function extrairDadosPDF(file) {
     dbg(`📈 Rentabilidade Mensal (Portfólio): ${rentabilidadeMensal}%`);
   }
   
-  // 🔥 CORREÇÃO DO %CDI: Captura o TERCEIRO número da linha MÊS (que é o %CDI)
-  // Padrão: "MÊS   - R$   26.698,62   - 1,22 %   - 100,23 %   - R$ 842,08"
-  // Vamos capturar a linha inteira e extrair o terceiro percentual
-  let mesesSection = textoCompleto.match(/MÊS[\s\S]*?%/i);
-  if (mesesSection) {
-    let linhaMes = mesesSection[0];
-    dbg(`🔍 Linha MÊS encontrada: ${linhaMes.substring(0, 200)}`);
+  // 🔥 CORREÇÃO DO %CDI: Captura a linha MÊS completa e extrai o TERCEIRO percentual
+  let mesesMatch = textoCompleto.match(/MÊS\s+(.*?)(?=ANO\s+)/i);
+  if (mesesMatch) {
+    let linhaMes = mesesMatch[1];
+    dbg(`🔍 Linha MÊS completa: ${linhaMes.substring(0, 200)}`);
     
-    // Encontra todos os percentuais na linha (formato: - 100 , 23 % ou 1 , 22 %)
+    // Encontra todos os percentuais na linha (formato: - 100 , 23 %)
     let percentuais = [];
     let percentRegex = /(-?\s*\d+)\s*,\s*(\d+)\s*%/g;
     let pMatch;
@@ -483,11 +481,10 @@ async function extrairDadosPDF(file) {
     // O %CDI é o segundo percentual (índice 1) - depois da rentabilidade
     if (percentuais.length >= 2) {
       pctCdi = percentuais[1];
-      dbg(`📊 %CDI (MÊS - segundo percentual): ${pctCdi}%`);
+      dbg(`📊 %CDI (segundo percentual): ${pctCdi}%`);
     } else if (percentuais.length >= 1) {
-      // Fallback: se só tem um, usa ele
       pctCdi = percentuais[0];
-      dbg(`📊 %CDI (MÊS - único percentual): ${pctCdi}%`);
+      dbg(`📊 %CDI (único percentual): ${pctCdi}%`);
     }
   }
   
@@ -528,6 +525,7 @@ async function extrairDadosPDF(file) {
     else if (nome === 'RendaVariávelGlobal') nome = 'Renda Variável Global';
     else if (nome === 'Alternativo') nome = 'Alternativo';
     else if (nome === 'Multimercado') nome = 'Multimercado';
+    else if (nome === 'RendaFixaGlobal') nome = 'Renda Fixa Global';
     else if (nome === 'FundosListados') nome = 'Fundos Listados';
     else if (nome === 'Caixa') nome = 'Caixa';
     else if (nome === 'Proventos') nome = 'Proventos';
