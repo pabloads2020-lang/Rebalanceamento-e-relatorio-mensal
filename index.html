@@ -191,7 +191,6 @@ let inputsMap = {};
 
 function fmtPct(v) { return v.toFixed(2).replace('.', ',') + ' %'; }
 function fmtBRL(v) { return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits: 2}); }
-function dbg(txt) { const b = document.getElementById('debugBox'); b.textContent += txt + '\n'; }
 
 function atualizarTotal() {
   let t = 0;
@@ -209,7 +208,9 @@ async function extrairDadosPDF(file) {
     textoCompleto += tc.items.map(item => item.str).join(' ') + ' ';
   }
   const limpo = textoCompleto.replace(/\s+/g, '');
-  dbg('Processando PDF...');
+
+  // LIMPAR ANTES DE NOVO IMPORT (Evita erro de 170%)
+  CLASSES.forEach(c => { inputsMap[c].value = 0; });
 
   function buscarPct(nome) {
     const n = nome.replace(/\s+/g, '');
@@ -231,8 +232,12 @@ async function extrairDadosPDF(file) {
   if (pm) pat = parseFloat(pm[1].replace(/\./g, '').replace(',', '.'));
 
   let dr = { alocacoes: {}, retornos: {}, patrimonio: pat, rentabilidadeMensal: 0, pctCdi: 0, mesRef: "Abril", anoRef: "2026" };
+  
+  // CAPTURA DO CDI (AJUSTE SOLICITADO)
   const rm = limpo.match(/RENTABILIDADEMÊS:([\d,]+)%/i);
   if (rm) dr.rentabilidadeMensal = parseFloat(rm[1].replace(',', '.'));
+  
+  // Regex específica para pegar o % do CDI que vem logo após
   const cm = limpo.match(/MÊSR\$[\d\.,]+[\d,]+%([\d,]+)%/i);
   if (cm) dr.pctCdi = parseFloat(cm[1].replace(',', '.'));
 
@@ -265,7 +270,7 @@ function analisar() {
   const area = document.getElementById('resultArea');
   document.getElementById('listaRec').innerHTML = html;
   area.style.display = 'block';
-  area.scrollIntoView({ behavior: 'smooth' }); // Scroll restaurado
+  area.scrollIntoView({ behavior: 'smooth' }); // SCROLL RESTAURADO
 }
 
 function gerarTexto(d) {
@@ -316,6 +321,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 document.getElementById('btnCopiar').addEventListener('click', () => {
   const t = document.getElementById('relTextoFinal')?.innerText;
   if(t) { navigator.clipboard.writeText(t); alert('Copiado!'); }
+});
+
+document.getElementById('btnLimpar').addEventListener('click', () => {
+  document.getElementById('filePdf').value = '';
+  CLASSES.forEach(c => { inputsMap[c].value = 0; });
+  atualizarTotal();
+  document.getElementById('patrimTag').classList.remove('show');
 });
 
 document.getElementById('themeToggle').addEventListener('click', () => {
