@@ -428,7 +428,7 @@ async function extrairDadosPDF(file) {
     dbg(`💰 Patrimônio total: R$ ${patrimonio.toLocaleString('pt-BR')}`);
   }
   
-  // ========== EXTRAÇÃO PARA RELATÓRIO MENSAL (CORRIGIDA) ==========
+  // ========== EXTRAÇÃO PARA RELATÓRIO MENSAL (CORRIGIDA - RENTABILIDADE MÊS CORRETA) ==========
   let dadosRelatorioExtraidos = {
     alocacoes: {},
     retornos: {},
@@ -447,32 +447,52 @@ async function extrairDadosPDF(file) {
     dadosRelatorioExtraidos.anoReferencia = dataMatch[3];
   }
   
-  // 🔥 BLOCO CORRIGIDO - usando superLimpeza como no script que funciona
-  let textoLimpoRelatorio = superLimpeza(textoCompleto);
+  // 🔥 CORREÇÃO: Buscar a rentabilidade do MÊS diretamente da tabela Portfólio
+  // O padrão no PDF: "Portfólio   - 0 , 18 %   2 , 99 %"
+  // Vamos capturar o PRIMEIRO percentual após "Portfólio" (que é o mês)
   
-  // Extrai rentabilidade e %CDI (padrão do PDF sem espaços)
-  let rentMatch = textoLimpoRelatorio.match(/R\$[\d\.]+,\d{2}([\d,]+)%([\d,]+)%/i);
-  if (rentMatch) {
-    dadosRelatorioExtraidos.rentabilidadeMensal = parseFloat(rentMatch[1].replace(',', '.'));
-    dadosRelatorioExtraidos.pctCdi = parseFloat(rentMatch[2].replace(',', '.'));
-    dbg(`📈 Rentabilidade Mensal: ${dadosRelatorioExtraidos.rentabilidadeMensal}%`);
-    dbg(`📊 %CDI: ${dadosRelatorioExtraidos.pctCdi}%`);
-  } else {
-    // Fallback com regex antiga (com espaços) - mantém compatibilidade
-    let rentMatchOld = textoCompleto.match(/RENTABILIDADE\s+M[ÊE]S:\s*(\d+),(\d{2})%/i);
-    if (rentMatchOld) {
-      dadosRelatorioExtraidos.rentabilidadeMensal = parseFloat(rentMatchOld[1] + '.' + rentMatchOld[2]);
-      dbg(`📈 Rentabilidade Mensal (fallback): ${dadosRelatorioExtraidos.rentabilidadeMensal}%`);
-    }
-    
-    let cdiMatchOld = textoCompleto.match(/M[ÊE]S[^\d]*R\$\s*[\d\.]+,\d{2}\s+(\d+),(\d{2})%\s+(\d+),(\d{2})%/i);
-    if (cdiMatchOld) {
-      dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatchOld[3] + '.' + cdiMatchOld[4]);
-      dbg(`📊 %CDI (fallback): ${dadosRelatorioExtraidos.pctCdi}%`);
+  // Primeiro, tenta capturar com sinal negativo ou positivo
+  let rentabilidadeMensal = null;
+  let pctCdi = null;
+  
+  // Busca na seção de referências: "Portfólio   - 0 , 18 %" ou "Portfólio   1 , 23 %"
+  // Permite espaços, vírgula como separador decimal
+  let portfolioMatch = textoCompleto.match(/Portfólio\s+(-?\s*\d+)\s*,\s*(\d+)\s*%/i);
+  if (portfolioMatch) {
+    let sinal = portfolioMatch[1].trim().startsWith('-') ? '-' : '';
+    let numero = portfolioMatch[1].replace(/[^0-9-]/g, '');
+    let decimal = portfolioMatch[2];
+    rentabilidadeMensal = parseFloat((sinal + numero + '.' + decimal).replace('--', '-'));
+    dbg(`📈 Rentabilidade Mensal (Portfólio): ${rentabilidadeMensal}%`);
+  }
+  
+  // Busca %CDI na linha do MÊS: "MÊS   - R$   2 . 638 , 77   - 0 , 18 %   - 15 , 15 %"
+  let cdiMatch = textoCompleto.match(/MÊS[^\d]*R\$[\s\d\.]+,\d{2}\s+(-?\s*\d+)\s*,\s*(\d+)\s*%\s+(-?\s*\d+)\s*,\s*(\d+)\s*%/i);
+  if (cdiMatch) {
+    let sinal = cdiMatch[3].trim().startsWith('-') ? '-' : '';
+    let numero = cdiMatch[3].replace(/[^0-9-]/g, '');
+    let decimal = cdiMatch[4];
+    pctCdi = parseFloat((sinal + numero + '.' + decimal).replace('--', '-'));
+    dbg(`📊 %CDI (MÊS): ${pctCdi}%`);
+  }
+  
+  // Fallback para a regex antiga (sem espaços) se não encontrou
+  if (rentabilidadeMensal === null) {
+    let textoLimpoRelatorio = superLimpeza(textoCompleto);
+    let rentMatch = textoLimpoRelatorio.match(/R\$[\d\.]+,\d{2}([\d,]+)%([\d,]+)%/i);
+    if (rentMatch) {
+      rentabilidadeMensal = parseFloat(rentMatch[1].replace(',', '.'));
+      pctCdi = parseFloat(rentMatch[2].replace(',', '.'));
+      dbg(`📈 Rentabilidade Mensal (fallback): ${rentabilidadeMensal}%`);
+      dbg(`📊 %CDI (fallback): ${pctCdi}%`);
     }
   }
   
+  dadosRelatorioExtraidos.rentabilidadeMensal = rentabilidadeMensal;
+  dadosRelatorioExtraidos.pctCdi = pctCdi;
+  
   // Extrai classes e retornos (com superLimpeza)
+  let textoLimpoRelatorio = superLimpeza(textoCompleto);
   let regexClasse = /([A-Za-zÀ-Úà-û]+?)\((\d+),(\d+)%\)R\$[\d\.]+,\d+(-?\d+),(\d+)%/gi;
   let match;
   while ((match = regexClasse.exec(textoLimpoRelatorio)) !== null) {
@@ -673,8 +693,8 @@ function gerarRelatorioTexto(dados) {
     desempenhoTexto = "Não foi possível capturar os retornos individuais das classes no PDF.";
   }
   
-  let rentabilidadeStr = rentabilidade ? `${rentabilidade.toFixed(2).replace('.', ',')}%` : "não disponível";
-  let pctCdiStr = pctCdi ? `${pctCdi.toFixed(2).replace('.', ',')}%` : "não disponível";
+  let rentabilidadeStr = rentabilidade !== null ? `${rentabilidade.toFixed(2).replace('.', ',')}%` : "não disponível";
+  let pctCdiStr = pctCdi !== null ? `${pctCdi.toFixed(2).replace('.', ',')}%` : "não disponível";
   let patrimonioStr = patrimonio ? fmtBRL(patrimonio) : "";
   
   let texto = `Prezado cliente, tudo bem? Segue o seu relatório mensal.
