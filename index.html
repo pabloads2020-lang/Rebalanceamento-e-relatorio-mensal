@@ -450,15 +450,14 @@ async function extrairDadosPDF(file) {
     dadosRelatorioExtraidos.rentabilidadeMensal = parseFloat(rentMatch[1] + '.' + rentMatch[2]);
   }
   
-  // CORREÇÃO PONTUAL: Captura robusta do CDI na tabela de rentabilidade
-  let cdiMatch = textoCompleto.match(/M[ÊE]S[^\d]*R\$\s*[\d\.]+,\d{2}\s+(\d+),(\d{2})%\s+(\d+),(\d{2})%/i) || textoCompleto.match(/CDI\s*(\d+),(\d{2})%/i);
+  // CORREÇÃO CDI: Regex mais flexível para capturar o CDI ignorando espaços variáveis
+  const regexCDI = /M[ÊE]S[\s\S]*?R\$[\s\d.,]+?(\d+),(\d{2})%\s+(\d+),(\d{2})%/i;
+  const cdiMatch = textoCompleto.match(regexCDI);
   if (cdiMatch) {
-    // Se o match veio do primeiro grupo complexo, o CDI é o segundo par de dígitos (grupo 3 e 4)
-    if (cdiMatch[3] !== undefined) {
-      dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[3] + '.' + cdiMatch[4]);
-    } else {
-      dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[1] + '.' + cdiMatch[2]);
-    }
+    dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[3] + '.' + cdiMatch[4]);
+    dbg(`✅ % CDI Extraído: ${cdiMatch[3]},${cdiMatch[4]}%`);
+  } else {
+    dbg('❌ Falha ao extrair % do CDI');
   }
   
   // Extrai classes e retornos (com superLimpeza)
