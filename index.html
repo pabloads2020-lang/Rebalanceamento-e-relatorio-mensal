@@ -316,8 +316,7 @@ function fmtBRL(v) { return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDi
 function setStatus(msg, tipo) { const el = document.getElementById('status'); el.innerHTML = msg; el.className = 'status show status-' + tipo; setTimeout(() => el.classList.remove('show'), 4000); }
 function dbg(txt) { 
   debugContent.push(txt);
-  const el = document.getElementById('debugBox'); 
-  el.textContent = debugContent.join('\n');
+  document.getElementById('debugBox').textContent = debugContent.join('\n');
 }
 function clearDebug() { 
   debugContent = []; 
@@ -370,9 +369,6 @@ async function extrairDadosPDF(file) {
   // ========== EXTRAÇÃO PARA REBALANCEAMENTO ==========
   function extrairPctAdaptativo(nomeBusca, variacoesExtras = []) {
     const variacoes = [nomeBusca, nomeBusca.replace(/\s+/g, '\\s*'), ...variacoesExtras];
-    if (nomeBusca === 'Inflação') {
-      variacoes.push('In\\s*fl\\s*ação', 'In\\s*fl\\s*ação', 'In fl ação');
-    }
     for (const variacao of variacoes) {
       const regex = new RegExp(variacao + '\\s*\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{2})\\s*%\\)', 'i');
       const match = secaoAlvo.match(regex);
@@ -396,7 +392,7 @@ async function extrairDadosPDF(file) {
   
   const pctPos = extrairPctAdaptativo('Pós Fixado');
   const pctPre = extrairPctAdaptativo('Pré Fixado');
-  const pctInf = extrairPctAdaptativo('Inflação', ['In fl ação', 'Inflação']);
+  const pctInf = extrairPctAdaptativo('Inflação');
   const pctMulti = extrairPctAdaptativo('Multimercado');
   const pctRV = extrairPctAdaptativo('Renda Variável Brasil');
   const pctAlternativo = extrairPctAdaptativo('Alternativo');
@@ -437,7 +433,6 @@ async function extrairDadosPDF(file) {
     anoReferencia: ""
   };
   
-  // Extrai data
   let dataMatch = textoCompleto.match(/Data\s*de\s*Referência\s*(\d{2})\/(\d{2})\/(\d{4})/i);
   if (dataMatch) {
     let meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -445,11 +440,23 @@ async function extrairDadosPDF(file) {
     dadosRelatorioExtraidos.anoReferencia = dataMatch[3];
   }
   
-  // 🔥 CORREÇÃO: Buscar a rentabilidade do MÊS diretamente da tabela Portfólio
+  let textoLimpoRelatorio = superLimpeza(textoCompleto);
+  
+  // 🔥 NOVA EXTRAÇÃO DO %CDI (suporta valores negativos e 3 dígitos)
   let rentabilidadeMensal = null;
   let pctCdi = null;
   
-  // Busca na seção de referências: "Portfólio   - 1 , 22 %"
+  // 1. Tenta capturar da linha MÊS (mais confiável)
+  let mesLineMatch = textoCompleto.match(/MÊS[\s\S]*?R\$\s*[\d\.]+,\d{2}[\s\S]*?(-?\s*\d+)\s*,\s*(\d+)\s*%[\s\S]*?(-?\s*\d+)\s*,\s*(\d+)\s*%/i);
+  if (mesLineMatch) {
+    let sinalCdi = mesLineMatch[3].trim().startsWith('-') ? '-' : '';
+    let numeroCdi = mesLineMatch[3].replace(/[^0-9-]/g, '');
+    let decimalCdi = mesLineMatch[4];
+    pctCdi = parseFloat((sinalCdi + numeroCdi + '.' + decimalCdi).replace('--', '-'));
+    dbg(`📊 %CDI (linha MÊS): ${pctCdi}%`);
+  }
+  
+  // 2. Tenta capturar rentabilidade do mês do Portfólio
   let portfolioMatch = textoCompleto.match(/Portfólio\s+(-?\s*\d+)\s*,\s*(\d+)\s*%/i);
   if (portfolioMatch) {
     let sinal = portfolioMatch[1].trim().startsWith('-') ? '-' : '';
@@ -459,52 +466,20 @@ async function extrairDadosPDF(file) {
     dbg(`📈 Rentabilidade Mensal (Portfólio): ${rentabilidadeMensal}%`);
   }
   
-  // 🔥 CORREÇÃO DO %CDI: Captura a linha MÊS completa e extrai o TERCEIRO percentual
-  let mesesMatch = textoCompleto.match(/MÊS\s+(.*?)(?=ANO\s+)/i);
-  if (mesesMatch) {
-    let linhaMes = mesesMatch[1];
-    dbg(`🔍 Linha MÊS completa: ${linhaMes.substring(0, 200)}`);
-    
-    // Encontra todos os percentuais na linha (formato: - 100 , 23 %)
-    let percentuais = [];
-    let percentRegex = /(-?\s*\d+)\s*,\s*(\d+)\s*%/g;
-    let pMatch;
-    while ((pMatch = percentRegex.exec(linhaMes)) !== null) {
-      let sinal = pMatch[1].trim().startsWith('-') ? '-' : '';
-      let numero = pMatch[1].replace(/[^0-9-]/g, '');
-      let decimal = pMatch[2];
-      let valor = parseFloat((sinal + numero + '.' + decimal).replace('--', '-'));
-      percentuais.push(valor);
-      dbg(`   Percentual encontrado: ${valor}%`);
-    }
-    
-    // O %CDI é o segundo percentual (índice 1) - depois da rentabilidade
-    if (percentuais.length >= 2) {
-      pctCdi = percentuais[1];
-      dbg(`📊 %CDI (segundo percentual): ${pctCdi}%`);
-    } else if (percentuais.length >= 1) {
-      pctCdi = percentuais[0];
-      dbg(`📊 %CDI (único percentual): ${pctCdi}%`);
-    }
-  }
-  
-  // Fallback para a regex antiga (sem espaços) se não encontrou
-  if (rentabilidadeMensal === null) {
-    let textoLimpoRelatorio = superLimpeza(textoCompleto);
+  // 3. Fallback com regex antiga (sem espaços) caso necessário
+  if (rentabilidadeMensal === null || pctCdi === null) {
     let rentMatch = textoLimpoRelatorio.match(/R\$[\d\.]+,\d{2}([\d,]+)%([\d,]+)%/i);
     if (rentMatch) {
-      rentabilidadeMensal = parseFloat(rentMatch[1].replace(',', '.'));
-      pctCdi = parseFloat(rentMatch[2].replace(',', '.'));
-      dbg(`📈 Rentabilidade Mensal (fallback): ${rentabilidadeMensal}%`);
-      dbg(`📊 %CDI (fallback): ${pctCdi}%`);
+      if (rentabilidadeMensal === null) rentabilidadeMensal = parseFloat(rentMatch[1].replace(',', '.'));
+      if (pctCdi === null) pctCdi = parseFloat(rentMatch[2].replace(',', '.'));
+      dbg(`📈 Fallback: rentabilidade ${rentabilidadeMensal}%, CDI ${pctCdi}%`);
     }
   }
   
   dadosRelatorioExtraidos.rentabilidadeMensal = rentabilidadeMensal;
   dadosRelatorioExtraidos.pctCdi = pctCdi;
   
-  // Extrai classes e retornos
-  let textoLimpoRelatorio = superLimpeza(textoCompleto);
+  // Extração das classes de ativos
   let regexClasse = /([A-Za-zÀ-Úà-û]+?)\((\d+),(\d+)%\)R\$[\d\.]+,\d+(-?\d+),(\d+)%/gi;
   let match;
   while ((match = regexClasse.exec(textoLimpoRelatorio)) !== null) {
@@ -512,11 +487,7 @@ async function extrairDadosPDF(file) {
     let alocacao = match[2] + ',' + match[3];
     let retorno = match[4] + ',' + match[5];
     
-    // Remove o 'M' inicial APENAS do "MPósFixado"
-    if (nome === 'MPósFixado') {
-      nome = 'PósFixado';
-      dbg(`🔧 Limpando nome: MPósFixado -> PósFixado`);
-    }
+    if (nome === 'MPósFixado') nome = 'PósFixado';
     
     if (nome === 'PósFixado') nome = 'Pós-Fixado';
     else if (nome === 'PréFixado') nome = 'Pré-Fixado';
@@ -525,7 +496,6 @@ async function extrairDadosPDF(file) {
     else if (nome === 'RendaVariávelGlobal') nome = 'Renda Variável Global';
     else if (nome === 'Alternativo') nome = 'Alternativo';
     else if (nome === 'Multimercado') nome = 'Multimercado';
-    else if (nome === 'RendaFixaGlobal') nome = 'Renda Fixa Global';
     else if (nome === 'FundosListados') nome = 'Fundos Listados';
     else if (nome === 'Caixa') nome = 'Caixa';
     else if (nome === 'Proventos') nome = 'Proventos';
@@ -561,29 +531,28 @@ function renderInputs() {
 }
 
 function renderAlvo() {
-  const rec = PERFIS[perfilAtivo];
-  document.getElementById('perfilLabel').textContent = perfilAtivo;
+  const alvos = PERFIS[perfilAtivo];
   const container = document.getElementById('tabelaAlvo');
-  const classesAlvo = CLASSES.filter(c => c !== 'Caixa' && c !== 'Proventos' && c !== 'Fundos Listados');
-  container.innerHTML = classesAlvo.map((c, i) => `
-    <div class="alvo-row">
-      <div class="dot8 ${CORES[CLASSES.indexOf(c)]}"></div>
-      <span class="alvo-nome">${c}</span>
-      <div class="alvo-bar-wrap"><div class="alvo-bar-fill" style="width:${rec[c]}%"></div></div>
-      <span class="alvo-pct">${rec[c]}%</span>
-    </div>
-  `).join('');
+  const classesAlvo = CLASSES.filter(c => !['Caixa', 'Proventos', 'Fundos Listados'].includes(c));
+  container.innerHTML = classesAlvo.map(classe => {
+    const pct = alvos[classe] || 0;
+    return `
+      <div class="alvo-row">
+        <span class="alvo-nome">${classe}</span>
+        <div class="alvo-bar-wrap"><div class="alvo-bar-fill" style="width:${pct}%"></div></div>
+        <span class="alvo-pct">${pct}%</span>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('perfilLabel').innerText = perfilAtivo;
 }
 
 function renderPerfis() {
-  const icons = { Conservador: '🛡️', Moderado: '⚖️', Agressivo: '🚀' };
   const container = document.getElementById('perfisRow');
   container.innerHTML = Object.keys(PERFIS).map(p => `
-    <button class="perfil-btn ${p === perfilAtivo ? 'ativo' : ''}" data-perfil="${p}">
-      ${icons[p]} ${p}
-    </button>
+    <button class="perfil-btn ${p === perfilAtivo ? 'ativo' : ''}" data-perfil="${p}">${p}</button>
   `).join('');
-  container.querySelectorAll('.perfil-btn').forEach(btn => {
+  document.querySelectorAll('.perfil-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       perfilAtivo = btn.dataset.perfil;
       renderPerfis();
@@ -594,80 +563,80 @@ function renderPerfis() {
 }
 
 function analisar() {
-  let total = 0;
-  const atual = {};
+  let totalAtual = 0;
+  let valoresAtuais = {};
   CLASSES.forEach(c => {
-    atual[c] = parseFloat(inputsMap[c]?.value || 0) || 0;
-    total += atual[c];
+    let val = parseFloat(inputsMap[c]?.value) || 0;
+    valoresAtuais[c] = val;
+    totalAtual += val;
   });
   
-  if (Math.abs(total - 100) > 1) {
-    setStatus(`Total deve ser próximo de 100% (atual: ${fmtPct(total)}). Tolerância de 1%`, 'err');
+  if (Math.abs(totalAtual - 100) > 0.5) {
+    setStatus(`Total da alocação atual é ${fmtPct(totalAtual)}. Ajuste para 100% antes de analisar.`, 'err');
     return;
   }
   
-  const alvo = PERFIS[perfilAtivo];
-  let nManter = 0, nAlocar = 0, nRetirar = 0;
-  const classesAnalise = CLASSES.filter(c => c !== 'Caixa' && c !== 'Proventos' && c !== 'Fundos Listados');
+  const alvos = PERFIS[perfilAtivo];
+  let html = '';
+  let manter = 0, alocar = 0, retirar = 0;
   
-  const html = classesAnalise.map((c, idx) => {
-    const diff = alvo[c] - atual[c];
-    const valorMovimentar = Math.abs(diff * patrimonioTotal / 100);
+  CLASSES.forEach(classe => {
+    if (['Caixa', 'Proventos', 'Fundos Listados'].includes(classe)) return;
+    const atual = valoresAtuais[classe];
+    const alvo = alvos[classe];
+    const diff = alvo - atual;
+    const valor = Math.abs(diff * patrimonioTotal / 100);
     
-    let badgeClass, label, valorClass;
-    if (Math.abs(diff) < 0.05) {
+    let classeLabel = '';
+    let badgeClass = '';
+    let valorClass = '';
+    if (Math.abs(diff) < 0.1) {
+      classeLabel = '✓ Manter';
       badgeClass = 'b-manter';
-      label = '✓ Manter';
       valorClass = 'manter';
-      nManter++;
+      manter++;
     } else if (diff > 0) {
+      classeLabel = `↑ Alocar +${fmtPct(diff)}`;
       badgeClass = 'b-alocar';
-      label = `↑ Alocar +${fmtPct(diff)}`;
       valorClass = 'alocar';
-      nAlocar++;
+      alocar++;
     } else {
+      classeLabel = `↓ Retirar ${fmtPct(Math.abs(diff))}`;
       badgeClass = 'b-retirar';
-      label = `↓ Retirar ${fmtPct(Math.abs(diff))}`;
       valorClass = 'retirar';
-      nRetirar++;
+      retirar++;
     }
     
-    const valorDisplay = Math.abs(diff) < 0.05 ? 'R$ 0,00' : fmtBRL(valorMovimentar);
-    const corIndex = CLASSES.indexOf(c);
-    
-    return `
+    html += `
       <div class="rec-row">
-        <div class="dot8 ${CORES[corIndex]}"></div>
-        <span class="rec-nome">${c}</span>
-        <span class="rec-nums">${fmtPct(atual[c])} → ${alvo[c]}%</span>
-        <span class="rec-valor ${valorClass}">${valorDisplay}</span>
-        <span class="badge ${badgeClass}">${label}</span>
+        <span class="rec-nome">${classe}</span>
+        <span class="rec-nums">${fmtPct(atual)} → ${alvo}%</span>
+        <span class="rec-valor ${valorClass}">${fmtBRL(valor)}</span>
+        <span class="badge ${badgeClass}">${classeLabel}</span>
       </div>
     `;
-  }).join('');
+  });
   
-  const totalOutros = (atual['Caixa'] || 0) + (atual['Proventos'] || 0) + (atual['Fundos Listados'] || 0);
-  let observacao = '';
+  // 🔥 OBSERVAÇÃO DE CAIXA/PROVENTOS/FUNDOS LISTADOS (recolocada)
+  let totalOutros = (valoresAtuais['Caixa'] || 0) + (valoresAtuais['Proventos'] || 0) + (valoresAtuais['Fundos Listados'] || 0);
   if (totalOutros > 0.05) {
-    observacao = `
+    html += `
       <div style="margin-top: 1rem; padding: 0.75rem; background: var(--blue-bg); border-radius: 8px; border-left: 3px solid var(--blue);">
         <strong style="color: var(--blue);">ℹ️ Observação:</strong> O cliente possui ${fmtPct(totalOutros)} em Caixa/Proventos/Fundos Listados. 
-        Estes valores devem ser <strong>direcionados</strong> conforme as recomendações acima para ajustar a carteira aos percentuais-alvo.
+        Estes valores devem ser <strong>direcionados</strong> conforme as recomendações acima para ajustar a carteira aos percentuais‑alvo.
       </div>
     `;
   }
   
-  document.getElementById('listaRec').innerHTML = html + observacao;
+  document.getElementById('listaRec').innerHTML = html;
   document.getElementById('resumoGrid').innerHTML = `
-    <div class="resumo-item"><div class="resumo-label">Manter</div><div class="resumo-val" style="color:var(--amber)">${nManter}</div></div>
-    <div class="resumo-item"><div class="resumo-label">Alocar</div><div class="resumo-val" style="color:var(--green)">${nAlocar}</div></div>
-    <div class="resumo-item"><div class="resumo-label">Retirar</div><div class="resumo-val" style="color:var(--red)">${nRetirar}</div></div>
-    <div class="resumo-item"><div class="resumo-label">Perfil</div><div class="resumo-val" style="color:var(--gold);font-size:14px">${perfilAtivo}</div></div>
+    <div class="resumo-item"><div class="resumo-label">Manter</div><div class="resumo-val">${manter}</div></div>
+    <div class="resumo-item"><div class="resumo-label">Alocar</div><div class="resumo-val">${alocar}</div></div>
+    <div class="resumo-item"><div class="resumo-label">Retirar</div><div class="resumo-val">${retirar}</div></div>
+    <div class="resumo-item"><div class="resumo-label">Perfil</div><div class="resumo-val" style="font-size:14px">${perfilAtivo}</div></div>
   `;
-  
-  const area = document.getElementById('resultArea');
-  area.style.display = 'block';
-  area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('resultArea').style.display = 'block';
+  document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth' });
 }
 
 function gerarRelatorioTexto(dados) {
@@ -676,117 +645,86 @@ function gerarRelatorioTexto(dados) {
   let rentabilidade = dados.rentabilidadeMensal;
   let pctCdi = dados.pctCdi;
   let patrimonio = dados.patrimonio;
-  let alocacoes = dados.alocacoes;
-  let retornos = dados.retornos;
-  
   let cenario = document.getElementById('textoCenario').value;
   
   let desempenhoTexto = "";
-  let classesList = [];
-  
-  for (let nome in alocacoes) {
-    if (alocacoes[nome]) {
-      let alocNum = parseFloat(alocacoes[nome].replace(',', '.'));
-      classesList.push({ nome: nome, alocacao: alocNum, alocStr: alocacoes[nome], retorno: retornos[nome] });
+  let classes = [];
+  for (let nome in dados.alocacoes) {
+    if (dados.alocacoes[nome]) {
+      classes.push({
+        nome: nome,
+        aloc: dados.alocacoes[nome],
+        ret: dados.retornos[nome]
+      });
     }
   }
-  classesList.sort((a, b) => b.alocacao - a.alocacao);
+  classes.sort((a,b) => parseFloat(b.aloc.replace(',','.')) - parseFloat(a.aloc.replace(',','.')));
   
-  for (let item of classesList) {
-    let ret = item.retorno.replace(',', '.');
-    let retNum = parseFloat(ret);
-    let isNegativo = ret.startsWith('-') || retNum < 0;
-    let movimento = isNegativo ? 'recuou' : 'subiu';
-    let retornoAbs = isNegativo ? ret.replace('-', '') : ret;
-    desempenhoTexto += `${item.nome} (${item.alocStr}% da carteira) ${movimento} ${retornoAbs}%; `;
+  for (let item of classes) {
+    let ret = item.ret.replace(',', '.');
+    let isNeg = ret.startsWith('-') || parseFloat(ret) < 0;
+    let mov = isNeg ? 'recuou' : 'subiu';
+    let absRet = isNeg ? ret.replace('-', '') : ret;
+    desempenhoTexto += `${item.nome} (${item.aloc}% da carteira) ${mov} ${absRet}%; `;
   }
   
-  if (desempenhoTexto === "") {
-    desempenhoTexto = "Não foi possível capturar os retornos individuais das classes no PDF.";
-  }
+  if (!desempenhoTexto) desempenhoTexto = "Não foi possível capturar os retornos individuais das classes no PDF.";
   
-  let rentabilidadeStr = rentabilidade !== null ? `${rentabilidade.toFixed(2).replace('.', ',')}%` : "não disponível";
-  let pctCdiStr = pctCdi !== null ? `${pctCdi.toFixed(2).replace('.', ',')}%` : "não disponível";
-  let patrimonioStr = patrimonio ? fmtBRL(patrimonio) : "";
+  let rentStr = rentabilidade !== null ? rentabilidade.toFixed(2).replace('.', ',') + '%' : 'não disponível';
+  let cdiStr = pctCdi !== null ? pctCdi.toFixed(2).replace('.', ',') + '%' : 'não disponível';
+  let patrimonioStr = patrimonio ? fmtBRL(patrimonio) : '';
   
-  let texto = `Prezado cliente, tudo bem? Segue o seu relatório mensal.
+  return `Prezado cliente, tudo bem? Segue o seu relatório mensal.
 
 ${cenario}
 
-Sua carteira atravessou esse ambiente com solidez, apresentando um retorno de ${rentabilidadeStr} no mês de ${mes.toLowerCase()} de ${ano}, equivalente a ${pctCdiStr} do CDI do período.${patrimonioStr ? ` O patrimônio atual é de ${patrimonioStr}.` : ''}
+Sua carteira atravessou esse ambiente com solidez, apresentando um retorno de ${rentStr} no mês de ${mes.toLowerCase()} de ${ano}, equivalente a ${cdiStr} do CDI do período.${patrimonioStr ? ` O patrimônio atual é de ${patrimonioStr}.` : ''}
 
 No desempenho por classe de ativo: ${desempenhoTexto}
 
 Por fim, reforçamos a importância da disciplina na manutenção da estratégia e nos aportes focando no desenvolvimento da carteira no longo prazo. Essa postura é fundamental para atravessar diferentes ciclos de mercado, aproveitar oportunidades, reduzir os impactos das oscilações no curto prazo e manter a carteira alinhada aos seus objetivos financeiros.`;
-  
-  return texto;
 }
 
 // ========== EVENTOS ==========
+document.getElementById('themeToggle').addEventListener('click', () => {
+  document.body.classList.toggle('light');
+  const isLight = document.body.classList.contains('light');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  document.getElementById('themeToggle').textContent = isLight ? '☀️' : '🌙';
+});
+
+document.getElementById('filePdf').addEventListener('change', function(e) {
+  if (e.target.files.length) document.getElementById('fileName').innerText = e.target.files[0].name;
+});
+
 document.getElementById('btnToggleDebug').addEventListener('click', () => {
-  const debugBox = document.getElementById('debugBox');
-  const arrow = document.getElementById('debugArrow');
-  debugBox.classList.toggle('show');
-  arrow.classList.toggle('rotated');
-});
-
-document.getElementById('filePdf').addEventListener('change', function() {
-  document.getElementById('fileName').textContent = this.files[0]?.name || 'Selecionar arquivo PDF...';
-});
-
-document.getElementById('btnCopiar').addEventListener('click', async () => {
-  const texto = document.getElementById('relatorioConteudo').innerText;
-  try {
-    await navigator.clipboard.writeText(texto);
-    setStatus('✅ Texto copiado para a área de transferência!', 'ok');
-  } catch (err) {
-    setStatus('❌ Erro ao copiar texto', 'err');
-  }
+  document.getElementById('debugBox').classList.toggle('show');
+  document.getElementById('debugArrow').classList.toggle('rotated');
 });
 
 document.getElementById('btnImportar').addEventListener('click', async () => {
   const file = document.getElementById('filePdf').files[0];
-  if (!file) { setStatus('Selecione um arquivo PDF primeiro.', 'err'); return; }
+  if (!file) { setStatus('Selecione um arquivo PDF.', 'err'); return; }
   clearDebug();
-  document.getElementById('debugBox').classList.remove('show');
-  document.getElementById('debugArrow').classList.remove('rotated');
-  document.getElementById('patrimTag').classList.remove('show');
   document.getElementById('overlay').classList.add('show');
   try {
-    const { resRebalanceamento, patrimonio, dadosRelatorio: dadosRelatorioExtraidos } = await extrairDadosPDF(file);
+    const { resRebalanceamento, patrimonio, dadosRelatorio: dados } = await extrairDadosPDF(file);
     patrimonioTotal = patrimonio;
-    dadosRelatorio = dadosRelatorioExtraidos;
-    
-    let encontrou = false;
-    for (const classe of CLASSES) {
-      if (resRebalanceamento[classe] !== null && resRebalanceamento[classe] !== undefined && resRebalanceamento[classe] > 0) {
-        inputsMap[classe].value = resRebalanceamento[classe].toFixed(2);
-        encontrou = true;
-      } else {
-        inputsMap[classe].value = '0';
-      }
+    for (let classe of CLASSES) {
+      let val = resRebalanceamento[classe];
+      if (inputsMap[classe]) inputsMap[classe].value = (val !== null && !isNaN(val)) ? val.toFixed(2) : '0';
     }
     atualizarTotal();
-    
-    let textoFinal = gerarRelatorioTexto(dadosRelatorioExtraidos);
-    document.getElementById('relatorioConteudo').innerHTML = `<div class="relatorio-texto">${textoFinal.replace(/\n/g, '<br>')}</div>`;
-    
-    if (encontrou) {
-      setStatus('✅ PDF importado com sucesso!', 'ok');
-      if (patrimonioTotal > 0) {
-        document.getElementById('patrimVal').innerHTML = fmtBRL(patrimonioTotal);
-        document.getElementById('patrimTag').classList.add('show');
-      }
-    } else {
-      setStatus('⚠️ Dados extraídos parcialmente. Veja o debug.', 'err');
-      document.getElementById('debugBox').classList.add('show');
-      document.getElementById('debugArrow').classList.add('rotated');
+    let relatorioTexto = gerarRelatorioTexto(dados);
+    document.getElementById('relatorioConteudo').innerHTML = `<div class="relatorio-texto">${relatorioTexto.replace(/\n/g, '<br>')}</div>`;
+    if (patrimonio) {
+      document.getElementById('patrimVal').innerText = fmtBRL(patrimonio);
+      document.getElementById('patrimTag').classList.add('show');
     }
-  } catch (e) {
-    setStatus('Erro: ' + e.message, 'err'); 
-    dbg('ERRO: ' + e.message);
-    document.getElementById('debugBox').classList.add('show');
-    document.getElementById('debugArrow').classList.add('rotated');
+    setStatus('✅ PDF importado com sucesso!', 'ok');
+  } catch (err) {
+    setStatus('❌ Erro ao processar PDF: ' + err.message, 'err');
+    dbg('ERRO: ' + err.message);
   } finally {
     document.getElementById('overlay').classList.remove('show');
   }
@@ -795,54 +733,42 @@ document.getElementById('btnImportar').addEventListener('click', async () => {
 document.getElementById('btnLimpar').addEventListener('click', () => {
   CLASSES.forEach(c => { if (inputsMap[c]) inputsMap[c].value = '0'; });
   patrimonioTotal = 0;
-  dadosRelatorio = null;
   atualizarTotal();
   document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('relatorioConteudo').innerHTML = '<div style="text-align: center; padding: 2rem;">⚡ Importe um PDF para gerar o relatório automático</div>';
   document.getElementById('status').classList.remove('show');
   document.getElementById('patrimTag').classList.remove('show');
-  document.getElementById('relatorioConteudo').innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text3);">⚡ Importe um PDF para gerar o relatório automático</div>';
-  clearDebug();
   document.getElementById('debugBox').classList.remove('show');
-  document.getElementById('debugArrow').classList.remove('rotated');
+  clearDebug();
   document.getElementById('filePdf').value = '';
-  document.getElementById('fileName').textContent = 'Selecionar arquivo PDF...';
+  document.getElementById('fileName').innerText = 'Selecionar arquivo PDF...';
 });
 
 document.getElementById('btnAnalisar').addEventListener('click', analisar);
+document.getElementById('btnCopiar').addEventListener('click', async () => {
+  const texto = document.getElementById('relatorioConteudo').innerText;
+  try {
+    await navigator.clipboard.writeText(texto);
+    setStatus('✅ Texto copiado!', 'ok');
+  } catch (err) {
+    setStatus('❌ Erro ao copiar', 'err');
+  }
+});
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    const tabId = btn.dataset.tab;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    document.getElementById(tabId).classList.add('active');
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
   });
 });
 
-document.getElementById('themeToggle').addEventListener('click', () => {
-  const body = document.body;
-  const btn = document.getElementById('themeToggle');
-  if (body.classList.contains('light')) {
-    body.classList.remove('light');
-    localStorage.setItem('theme', 'dark');
-    btn.textContent = '🌙';
-  } else {
-    body.classList.add('light');
-    localStorage.setItem('theme', 'light');
-    btn.textContent = '☀️';
-  }
-});
-
 (function init() {
-  const saved = localStorage.getItem('theme');
-  if (saved === 'light') {
-    document.body.classList.add('light');
-    document.getElementById('themeToggle').textContent = '☀️';
-  }
-  document.getElementById('hDate').textContent = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
-  renderInputs(); 
-  renderPerfis(); 
+  if (localStorage.getItem('theme') === 'light') document.body.classList.add('light');
+  document.getElementById('hDate').innerText = new Date().toLocaleDateString('pt-BR');
+  renderInputs();
+  renderPerfis();
   renderAlvo();
 })();
 </script>
