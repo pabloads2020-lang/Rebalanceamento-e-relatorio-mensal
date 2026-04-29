@@ -428,7 +428,7 @@ async function extrairDadosPDF(file) {
     dbg(`💰 Patrimônio total: R$ ${patrimonio.toLocaleString('pt-BR')}`);
   }
   
-  // ========== EXTRAÇÃO PARA RELATÓRIO MENSAL ==========
+  // ========== EXTRAÇÃO PARA RELATÓRIO MENSAL (CORRIGIDA) ==========
   let dadosRelatorioExtraidos = {
     alocacoes: {},
     retornos: {},
@@ -447,22 +447,35 @@ async function extrairDadosPDF(file) {
     dadosRelatorioExtraidos.anoReferencia = dataMatch[3];
   }
   
-  // Extrai rentabilidade e %CDI
-  let rentMatch = textoCompleto.match(/RENTABILIDADE\s+M[ÊE]S:\s*(\d+),(\d{2})%/i);
-  if (rentMatch) {
-    dadosRelatorioExtraidos.rentabilidadeMensal = parseFloat(rentMatch[1] + '.' + rentMatch[2]);
-  }
+  // 🔥 BLOCO CORRIGIDO - usando superLimpeza como no script que funciona
+  let textoLimpoRelatorio = superLimpeza(textoCompleto);
   
-  let cdiMatch = textoCompleto.match(/M[ÊE]S[^\d]*R\$\s*[\d\.]+,\d{2}\s+(\d+),(\d{2})%\s+(\d+),(\d{2})%/i);
-  if (cdiMatch) {
-    dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[3] + '.' + cdiMatch[4]);
+  // Extrai rentabilidade e %CDI (padrão do PDF sem espaços)
+  let rentMatch = textoLimpoRelatorio.match(/R\$[\d\.]+,\d{2}([\d,]+)%([\d,]+)%/i);
+  if (rentMatch) {
+    dadosRelatorioExtraidos.rentabilidadeMensal = parseFloat(rentMatch[1].replace(',', '.'));
+    dadosRelatorioExtraidos.pctCdi = parseFloat(rentMatch[2].replace(',', '.'));
+    dbg(`📈 Rentabilidade Mensal: ${dadosRelatorioExtraidos.rentabilidadeMensal}%`);
+    dbg(`📊 %CDI: ${dadosRelatorioExtraidos.pctCdi}%`);
+  } else {
+    // Fallback com regex antiga (com espaços) - mantém compatibilidade
+    let rentMatchOld = textoCompleto.match(/RENTABILIDADE\s+M[ÊE]S:\s*(\d+),(\d{2})%/i);
+    if (rentMatchOld) {
+      dadosRelatorioExtraidos.rentabilidadeMensal = parseFloat(rentMatchOld[1] + '.' + rentMatchOld[2]);
+      dbg(`📈 Rentabilidade Mensal (fallback): ${dadosRelatorioExtraidos.rentabilidadeMensal}%`);
+    }
+    
+    let cdiMatchOld = textoCompleto.match(/M[ÊE]S[^\d]*R\$\s*[\d\.]+,\d{2}\s+(\d+),(\d{2})%\s+(\d+),(\d{2})%/i);
+    if (cdiMatchOld) {
+      dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatchOld[3] + '.' + cdiMatchOld[4]);
+      dbg(`📊 %CDI (fallback): ${dadosRelatorioExtraidos.pctCdi}%`);
+    }
   }
   
   // Extrai classes e retornos (com superLimpeza)
-  let textoLimpo = superLimpeza(textoCompleto);
   let regexClasse = /([A-Za-zÀ-Úà-û]+?)\((\d+),(\d+)%\)R\$[\d\.]+,\d+(-?\d+),(\d+)%/gi;
   let match;
-  while ((match = regexClasse.exec(textoLimpo)) !== null) {
+  while ((match = regexClasse.exec(textoLimpoRelatorio)) !== null) {
     let nome = match[1];
     let alocacao = match[2] + ',' + match[3];
     let retorno = match[4] + ',' + match[5];
