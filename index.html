@@ -454,13 +454,19 @@ async function extrairDadosPDF(file) {
     dbg(`📈 Rentabilidade Mensal (encontrada): ${dadosRelatorioExtraidos.rentabilidadeMensal}%`);
   }
   
-  // EXTRAI %CDI (CORRIGIDO) - Busca na tabela RESUMO
-  // Padrão: "MÊS   R$ 24.569,45   0,89%   148,93%"
-  let cdiMatch = textoCompleto.match(/M[ÊE]S[^\d]*R\$\s*[\d\.]+,\d{2}\s+(\d+),(\d{2})%\s+(\d+),(\d{2})%/i);
-  if (cdiMatch) {
-    dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[3] + '.' + cdiMatch[4]);
-    dbg(`📊 %CDI (encontrado): ${dadosRelatorioExtraidos.pctCdi}%`);
-  }
+  // EXTRAI %CDI - CORRIGIDO (busca mais flexível)
+// Padrão no PDF: "MÊS   R$ 24.569,45   0,89%   148,93%"
+let cdiMatch = textoCompleto.match(/M[ÊE]S[^\d]*R\$\s*[\d\.]+\s*,\s*\d{2}\s+(\d+)\s*,\s*(\d{2})%\s+(\d+)\s*,\s*(\d{2})%/i);
+if (!cdiMatch) {
+  // Fallback: padrão com espaços diferentes
+  cdiMatch = textoCompleto.match(/M[ÊE]S\s+R\$\s+[\d\.]+,\d{2}\s+(\d+),(\d{2})%\s+(\d+),(\d{2})%/i);
+}
+if (cdiMatch) {
+  dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[3] + '.' + cdiMatch[4]);
+  dbg(`📊 %CDI encontrado: ${dadosRelatorioExtraidos.pctCdi}%`);
+} else {
+  dbg(`⚠️ %CDI NÃO encontrado no PDF`);
+}
   
   // Extrai classes e retornos - CORRIGIDO: remove o "M" antes do nome
   let textoLimpo = superLimpeza(textoCompleto);
