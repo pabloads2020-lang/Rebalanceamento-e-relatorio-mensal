@@ -197,13 +197,11 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     </div>
   </div>
 
-  <!-- TAB BAR -->
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="tab-rebalanceamento">⚖️ Rebalanceamento</button>
     <button class="tab-btn" data-tab="tab-relatorio">📊 Relatório Mensal</button>
   </div>
 
-  <!-- TAB 1: REBALANCEAMENTO -->
   <div id="tab-rebalanceamento" class="tab-content active">
     <div class="perfis-row" id="perfisRow"></div>
     <div class="grid2">
@@ -230,7 +228,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     </div>
   </div>
 
-  <!-- TAB 2: RELATÓRIO MENSAL -->
   <div id="tab-relatorio" class="tab-content">
     <div class="card">
       <div class="card-title">📝 Cenário Macro do Mês</div>
@@ -453,9 +450,15 @@ async function extrairDadosPDF(file) {
     dadosRelatorioExtraidos.rentabilidadeMensal = parseFloat(rentMatch[1] + '.' + rentMatch[2]);
   }
   
-  let cdiMatch = textoCompleto.match(/M[ÊE]S[^\d]*R\$\s*[\d\.]+,\d{2}\s+(\d+),(\d{2})%\s+(\d+),(\d{2})%/i);
+  // CORREÇÃO PONTUAL: Captura robusta do CDI na tabela de rentabilidade
+  let cdiMatch = textoCompleto.match(/M[ÊE]S[^\d]*R\$\s*[\d\.]+,\d{2}\s+(\d+),(\d{2})%\s+(\d+),(\d{2})%/i) || textoCompleto.match(/CDI\s*(\d+),(\d{2})%/i);
   if (cdiMatch) {
-    dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[3] + '.' + cdiMatch[4]);
+    // Se o match veio do primeiro grupo complexo, o CDI é o segundo par de dígitos (grupo 3 e 4)
+    if (cdiMatch[3] !== undefined) {
+      dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[3] + '.' + cdiMatch[4]);
+    } else {
+      dadosRelatorioExtraidos.pctCdi = parseFloat(cdiMatch[1] + '.' + cdiMatch[2]);
+    }
   }
   
   // Extrai classes e retornos (com superLimpeza)
